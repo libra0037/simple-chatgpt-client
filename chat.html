@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html>
+<head>
+<link rel="stylesheet" href="https://lf9-cdn-tos.bytecdntp.com/cdn/expire-1-w/github-markdown-css/5.1.0/github-markdown.min.css">
+<link rel="stylesheet" href="https://lf26-cdn-tos.bytecdntp.com/cdn/expire-1-w/highlight.js/11.4.0/styles/github.min.css">
+<script type="application/javascript" src="https://lf6-cdn-tos.bytecdntp.com/cdn/expire-1-w/showdown/2.0.0/showdown.min.js"></script>
+<script type="application/javascript" src="https://lf9-cdn-tos.bytecdntp.com/cdn/expire-1-w/highlight.js/11.4.0/highlight.min.js"></script>
+<script>
+const key = "sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
+showdown.setFlavor('github');
+var converter = new showdown.Converter();
+var msgs = [{"role": "system", "content": "You are a helpful assistant."}];
+function newbox(ai) {
+	var chats = document.getElementById("chat");
+	var bottom = chats.scrollTop + chats.clientHeight - chats.scrollHeight >= -16;
+	var box = document.createElement("div");
+	box.className = "markdown-body";
+	if(ai)box.style = "background: #f7f7f8d0;";
+	chats.appendChild(box);
+	if(bottom)chats.scrollTo(0, chats.scrollHeight);
+	return box;
+}
+function fixcode(text) {
+	text += "\n";
+	var ticks = text.match(/ *`{3,}.*\n/g);
+	if(!ticks)return "";
+	var tick;
+	var las = 0;
+	for(var t of ticks) {
+		tick = t.match(/( *(`{3,})).*\n/);
+		if(las === 0)las = tick[2].length;
+		else if(las === tick[2].length)las = 0;
+	}
+	return las === 0 ? "" : "\n" + tick[1];
+}
+function setmsg(box, text) {
+	var chats = document.getElementById("chat");
+	var bottom = chats.scrollTop + chats.clientHeight - chats.scrollHeight >= -16;
+	box.innerHTML = converter.makeHtml(text + fixcode(text));
+	box.querySelectorAll("pre code").forEach(e => { hljs.highlightElement(e); });
+	if(bottom)chats.scrollTo(0, chats.scrollHeight);
+}
+function submit() {
+	var edit = document.getElementById("input");
+	var s_user = edit.value;
+	edit.value = '';
+	setmsg(newbox(false), s_user);
+	msgs.push({"role": "user", "content": s_user});
+	fetch("https://api.openai.com/v1/chat/completions", {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json",
+			"Authorization": "Bearer " + key
+		},
+		body: JSON.stringify({"model": "gpt-3.5-turbo", "stream": true, "messages": msgs})
+	}).then(response => {
+		if(response.status !== 200) {
+			alert("ERROR: status = " + response.status);
+			return;
+		}
+		var box = newbox(true);
+		var reader = response.body.getReader();
+		var decoder = new TextDecoder();
+		var buff = "";
+		var s_assistant = "";
+		reader.read().then(function processStream(result) {
+			if(result.done) {
+				msgs.push({"role": "assistant", "content": s_assistant});
+				return;
+			}
+			buff += decoder.decode(result.value, {stream: true});
+			var chunks = buff.match(/[^]*?\n\n/g);
+			buff = buff.replace(/[^]*?\n\n/g, '');
+			for(var chunk of chunks) {
+				var data = chunk.match(/data: ({.*})\n/);
+				if(!data)continue;
+				var body = JSON.parse(data[1]);
+				var delta = body["choices"][0]["delta"];
+				if(delta.hasOwnProperty("content"))s_assistant += delta["content"];
+			}
+			setmsg(box, s_assistant);
+			reader.read().then(processStream);
+		});
+	}).catch(error => {alert("ERROR: " + error);});
+}
+</script>
+<style>
+body{
+	background: seagreen;
+}
+container{
+	display: block;
+	margin: 0 auto;
+	width: 80vw;
+}
+div.div-chat{
+	overflow-y: auto;
+	width: 100%;
+	height: 89vh;
+}
+.markdown-body{
+	background: #ffffffd7;
+	box-sizing: border-box;
+	padding: 45px;
+}
+.markdown-body pre{
+	border: solid thin var(--color-border-default);
+}
+div.div-input{
+	margin-top: 8px;
+	overflow: auto;
+	width: 100%;
+	height: 7vh;
+}
+input.input{
+	background: #ffffffd7;
+	font-family: auto;
+	border: none;
+	outline: none;
+	box-sizing: border-box;
+	width: 80vw;
+	height: 100%;
+	padding: 0 2vw;
+}
+</style>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="utf-8">
+<title>ChatGPT Client</title>
+</head>
+<body>
+<container>
+<div class="div-chat" id="chat"></div>
+<div class="div-input">
+<input class="input" id="input" onkeydown="if(event.keyCode==13)submit();">
+</div>
+</container>
+</body>
+</html>
