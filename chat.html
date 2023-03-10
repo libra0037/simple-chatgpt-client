@@ -21,13 +21,11 @@ function newbox(ai) {
 	return box;
 }
 function fixcode(text) {
-	text += "\n";
-	var ticks = text.match(/ *`{3,}.*\n/g);
+	var ticks = text.match(/^ *`{3,}.*$/gm);
 	if(!ticks)return "";
-	var tick;
-	var las = 0;
+	var tick, las = 0;
 	for(var t of ticks) {
-		tick = t.match(/( *(`{3,})).*\n/);
+		tick = t.match(/( *(`{3,}))/);
 		if(las === 0)las = tick[2].length;
 		else if(las === tick[2].length)las = 0;
 	}
@@ -71,14 +69,16 @@ function submit() {
 			buff += decoder.decode(result.value, {stream: true});
 			var chunks = buff.match(/[^]*?\n\n/g);
 			buff = buff.replace(/[^]*?\n\n/g, '');
-			for(var chunk of chunks) {
-				var data = chunk.match(/data: ({.*})\n/);
-				if(!data)continue;
-				var body = JSON.parse(data[1]);
-				var delta = body["choices"][0]["delta"];
-				if(delta.hasOwnProperty("content"))s_assistant += delta["content"];
+			if(chunks) {
+				for(var chunk of chunks) {
+					var data = chunk.match(/data: ({.*})\n/);
+					if(!data)continue;
+					var body = JSON.parse(data[1]);
+					var delta = body["choices"][0]["delta"];
+					if(delta.hasOwnProperty("content"))s_assistant += delta["content"];
+				}
+				setmsg(box, s_assistant);
 			}
-			setmsg(box, s_assistant);
 			reader.read().then(processStream);
 		});
 	}).catch(error => {alert("ERROR: " + error);});
